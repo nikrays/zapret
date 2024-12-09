@@ -145,41 +145,6 @@ jobs:
           path: zapret-*.tar.xz
           if-no-files-found: error
 
-  build-freebsd:
-    name: FreeBSD ${{ matrix.arch }}
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - target: x86_64
-            arch: x86_64
-          # - target: i386
-          #   arch: x86
-    container:
-      image: empterdose/freebsd-cross-build:11.4
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install packages
-        run: apk add tar xz
-
-      - name: Build zapret
-        env:
-          TARGET: ${{ matrix.target }}
-          ARCH: ${{ matrix.arch }}
-        run: |
-          export CFLAGS="-DZAPRET_GH_VER=${{ github.ref_name }} -DZAPRET_GH_HASH=${{ github.sha }}"
-          settarget $TARGET-freebsd11 make bsd -j$(nproc)
-          tar -C binaries/my -cJf zapret-freebsd-$ARCH.tar.xz .
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: zapret-freebsd-${{ matrix.arch }}
-          path: zapret-*.tar.xz
-          if-no-files-found: error
-
   build-windows:
     name: Windows ${{ matrix.arch }}
     runs-on: windows-latest
@@ -350,7 +315,7 @@ jobs:
 
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [ build-linux, build-windows, build-macos, build-freebsd, build-android ]
+    needs: [ build-linux, build-windows, build-macos, build-android ]
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -413,7 +378,6 @@ jobs:
                 *-android-armeabi-v7a ) run_dir android-arm ;;
                 *-android-x86 )         run_dir android-x86 ;;
                 *-android-x86_64 )      run_dir android-x86_64 ;;
-                *-freebsd-x86_64 )      run_dir freebsd-x64 ;;
                 *-linux-arm )           run_dir arm ;;
                 *-linux-arm64 )         run_dir aarch64 ;;
                 *-linux-mips64 )        run_dir mips64r2-msb ;;
