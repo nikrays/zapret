@@ -201,109 +201,6 @@ jobs:
           path: zapret-*.tar.xz
           if-no-files-found: error
 
-  build-windows:
-    name: Windows ${{ matrix.arch }}
-    runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [ x86_64, x86 ]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          path: zapret
-
-      - name: Set up MinGW
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: ${{ matrix.arch == 'x86_64' && 'MINGW64' || 'MINGW32' }}
-          install: >-
-            ${{ matrix.arch == 'x86_64' && 'mingw-w64-x86_64-toolchain' || 'mingw-w64-i686-toolchain' }}
-
-      - name: Build ip2net, mdig
-        shell: msys2 {0}
-        run: |
-          export CFLAGS="-DZAPRET_GH_VER=${{ github.ref_name }} -DZAPRET_GH_HASH=${{ github.sha }}"
-          mkdir -p output
-          cd zapret
-          mingw32-make -C ip2net win
-          mingw32-make -C mdig win
-          cp -a {ip2net/ip2net,mdig/mdig}.exe ../output
-
-      - name: Restore psmisc from cache
-        id: cache-restore-psmisc
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ github.workspace }}/psmisc
-          key: psmisc-${{ matrix.arch }}
-
-      - name: Set up Cygwin
-        env:
-          PACKAGES: ${{ steps.cache-restore-psmisc.outputs.cache-hit != 'true' && 'cygport gettext-devel libiconv-devel libncurses-devel' || null }}
-        uses: cygwin/cygwin-install-action@v4
-        with:
-          platform: ${{ matrix.arch }}
-          site: ${{ matrix.arch == 'x86_64' && 'http://ctm.crouchingtigerhiddenfruitbat.org/pub/cygwin/circa/64bit/2024/01/30/231215' || null }}
-          check-sig: ${{ matrix.arch == 'x86_64' && 'false' || null }}
-          packages: >-
-            gcc-core
-            make
-            zlib-devel
-            zip
-            unzip
-            wget
-            ${{ env.PACKAGES }}
-
-      - name: Build psmisc
-        if: steps.cache-restore-psmisc.outputs.cache-hit != 'true'
-        env:
-          URL: https://mirrors.kernel.org/sourceware/cygwin/x86_64/release/psmisc
-        shell: C:\cygwin\bin\bash.exe -eo pipefail '{0}'
-        run: >-
-          export MAKEFLAGS=-j$(nproc) &&
-          mkdir -p psmisc && cd psmisc &&
-          wget -qO- ${URL} | grep -Po 'href=\"\Kpsmisc-(\d+\.)+\d+.+src\.tar\.xz(?=\")' | xargs -I{} wget -O- ${URL}/{} | tar -xJ &&
-          cd psmisc-*.src &&
-          echo CYGCONF_ARGS+=\" --disable-dependency-tracking --disable-nls\" >> psmisc.cygport &&
-          cygport psmisc.cygport prep compile install
-
-      - name: Save psmisc to cache
-        if: steps.cache-restore-psmisc.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ github.workspace }}/psmisc
-          key: psmisc-${{ matrix.arch }}
-
-      - name: Build winws
-        env:
-          TARGET: ${{ matrix.arch == 'x86_64' && 'cygwin' || 'cygwin32' }}
-        shell: C:\cygwin\bin\bash.exe -eo pipefail '{0}'
-        run: >-
-          export MAKEFLAGS=-j$(nproc) &&
-          export CFLAGS="-DZAPRET_GH_VER=${{ github.ref_name }} -DZAPRET_GH_HASH=${{ github.sha }}" &&
-          cd zapret &&
-          make -C nfq ${TARGET} &&
-          cp -a nfq/winws.exe ../output
-
-      - name: Create zip
-        env:
-          BITS: ${{ matrix.arch == 'x86_64' && '64' || '32' }}
-          DIR: ${{ matrix.arch == 'x86_64' && 'x64' || 'x86' }}
-        shell: C:\cygwin\bin\bash.exe -e '{0}'
-        run: >-
-          cp -a -t output psmisc/psmisc-*.src/psmisc-*/inst/usr/bin/killall.exe /usr/bin/cygwin1.dll &&
-          wget -O WinDivert.zip https://github.com/basil00/WinDivert/releases/download/v2.2.2/WinDivert-2.2.2-A.zip &&
-          unzip -j WinDivert.zip "*/${DIR}/WinDivert.dll" "*/${DIR}/WinDivert${BITS}.sys" -d output &&
-          zip zapret-win-${{ matrix.arch }}.zip -j output/*
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: zapret-win-${{ matrix.arch }}
-          path: zapret-*.zip
-          if-no-files-found: error
-
   build-android:
     name: Android ${{ matrix.abi }}
     runs-on: ubuntu-latest
@@ -378,7 +275,7 @@ jobs:
 
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [ build-linux, build-windows, build-macos, build-freebsd, build-android ]
+    needs: [ build-linux, build-macos, build-freebsd, build-android ]
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -453,8 +350,6 @@ jobs:
                 *-linux-x86_64 )        run_dir x86_64 ;;
                 *-linux-lexra )         run_dir lexra ;;
                 *-mac-x64 )             run_dir mac64 ;;
-                *-win-x86 )             run_dir win32 ;;
-                *-win-x86_64 )          run_dir win64 ;;
               esac
             fi
           done
